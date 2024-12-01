@@ -34,6 +34,7 @@ double angle, angle_filtro1, angle_offset;
 double last_angles[3] = {0.0, 0.0, 0.0}; // Inicializa con ceros
 double input, output, output_filtrada;
 double setpoint = 0; // Queremos mantener el robot en 0 grado
+double negative_repair = 1.07;
 double neg_correction = 1.0;
 
 // Constantes para el filtro complementario
@@ -41,9 +42,9 @@ const double dt = 0.001 * DELAY_MOTOR;  // Intervalo de tiempo (10 ms)
 const double alpha = 0.90; // Peso del giroscopio en el filtro complementario
 
 // Parámetros del PID
-double Kp = 6.00;   // Ganancia proporcional
-double Ki = 0.70;   // Ganancia integral
-double Kd = 0.005;  // Ganancia derivativa
+double Kp = 30.0;   // Ganancia proporcional
+double Ki = 5.0;   // Ganancia integral
+double Kd = 0.05;  // Ganancia derivativa
 
 //PID myPID();
 PID myPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
@@ -100,36 +101,6 @@ double filtro_angulo(double angle) {
     return result * sign;
 }
 
-double lecturaFiltradaMPU() {
-    // Actualizar datos del sensor
-    mpu.update();
-
-    // Leer datos de aceleración
-    AccelData accelData;
-    mpu.getAccel(&accelData);
-
-    // Calcular el ángulo de inclinación en grados (pitch)
-    double raw_angle = atan2(accelData.accelY, -accelData.accelZ) * RAD_TO_DEG;
-    
-    //angle_filtro1 = filtro_promedio(raw_angle, last_angles);
-
-        
-    // Leer datos de gyroscopio
-    GyroData gyroData;
-    mpu.getGyro(&gyroData);
-
-    // Tasa de cambio del ángulo
-    //double gyro_rate = gyroData.gyroX; 
-
-    //Serial.printf("Accelx: %.2f ; Accely: %.2f ; Accelz: %.2f\n", accelData.accelX, accelData.accelY, accelData.accelZ);
-    //Serial.printf("Gyrox: %.2f ; Gyroy: %.2f ; Gyroz: %.2f\n", gyroData.gyroX, gyroData.gyroY, gyroData.gyroZ);
-    //Serial.printf("Ángulo: %.2f ; %.2f\n", raw_angle, angle_filtro1);
-    
-
-    return angle_filtro1;
-}
-
-
 unsigned long last_time = 0;
 
 double actualizarAngulo() {
@@ -138,7 +109,7 @@ double actualizarAngulo() {
     last_time = current_time;
 
     //double gyro_angle = 0.0;          // Ángulo derivado del giroscopio
-    double gyro_rate = 0.0;         
+    double gyro_rate = 0.0;
     double accel_angle = 0.0;         // Ángulo derivado del acelerómetro
     double angle_complementary = 0.0;  // Ángulo estimado
 
@@ -151,7 +122,7 @@ double actualizarAngulo() {
 
     // Calcular ángulo a partir del acelerómetro
     accel_angle = (atan2(accelData.accelY, -accelData.accelZ) * RAD_TO_DEG) - angle_offset;
-    //if (accel_angle < 0) accel_angle *= negative_repair;
+    if (accel_angle < 0) accel_angle *= negative_repair;
 
     // Integrar el giro para obtener el ángulo del giroscopio
     //gyro_angle += gyroData.gyroX * dt;
@@ -200,14 +171,14 @@ void taskControlPID(void *parameter) {
           input = 0;
           myPID.Compute();
           motors.brake();
-        } else if (fabs(angulo) > 55){
+        } else if (fabs(angulo) > 45){
           motors.brake();
         } else {
-          input = filtro_angulo(angulo) * 0.85;
+          input = angulo;//filtro_angulo(angulo);// * 0.85;
 
           myPID.Compute();
-          double correct = (angulo < 0) ? neg_correction : 1.0; // negativo : positivo
-          output_filtrada = (output / 255.0) * correct;
+          //double correct = (angulo < 0) ? neg_correction : 1.0; // negativo : positivo
+          output_filtrada = (output / 255.0);// * correct;
           motors.drive(output_filtrada);
         }
 
@@ -216,6 +187,52 @@ void taskControlPID(void *parameter) {
         
         vTaskDelay(pdMS_TO_TICKS(DELAY_MOTOR)); // 10ms
     }
+}
+
+void calibracionCompletaManual(){
+    double max_pos, max_neg;
+
+    vTaskDelay(pdMS_TO_TICKS(500));
+    mpu.update();
+    AccelData accelData;
+    mpu.getAccel(&accelData);
+    // Calcular el maximo valor positivo (a la izquierda)
+    max_pos = atan2(accelData.accelY, -accelData.accelZ) * RAD_TO_DEG;
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    digitalWrite(LED_PIN, LOW);
+    vTaskDelay(pdMS_TO_TICKS(2500));
+    digitalWrite(LED_PIN, HIGH);
+
+    vTaskDelay(pdMS_TO_TICKS(500));
+    mpu.update();
+    mpu.getAccel(&accelData);
+    // Calcular el maximo valor negativo (a la derecha)
+    max_neg = atan2(accelData.accelY, -accelData.accelZ) * RAD_TO_DEG;
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    digitalWrite(LED_PIN, LOW);
+    vTaskDelay(pdMS_TO_TICKS(2500));
+    digitalWrite(LED_PIN, HIGH);
+
+    vTaskDelay(pdMS_TO_TICKS(500));
+    mpu.update();
+    mpu.getAccel(&accelData);
+    // Calcular el punto 0
+    angle_offset = atan2(accelData.accelY, -accelData.accelZ) * RAD_TO_DEG;
+    vTaskDelay(pdMS_TO_TICKS(500));
+    
+    neg_correction = fabs(max_pos/max_neg);
+}
+
+void calibracionOffset(){
+    vTaskDelay(pdMS_TO_TICKS(500));
+    mpu.update();
+    AccelData accelData;
+    mpu.getAccel(&accelData);
+    // Calcular el punto 0
+    angle_offset = atan2(accelData.accelY, -accelData.accelZ) * RAD_TO_DEG;
+    vTaskDelay(pdMS_TO_TICKS(500));
 }
 
 void setup() {
@@ -245,56 +262,8 @@ void setup() {
         Serial.println("Error al configurar el rango del giroscopio");
     }
 
-    double max_pos, max_neg;
-
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    // Actualizar datos del sensor
-    mpu.update();
-    // Leer datos de aceleración
-    AccelData accelData;
-    mpu.getAccel(&accelData);
-    // Calcular el maximo valor positivo (a la izquierda)
-    max_pos = atan2(accelData.accelY, -accelData.accelZ) * RAD_TO_DEG;
-
-
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    digitalWrite(LED_PIN, LOW);
-
-    vTaskDelay(pdMS_TO_TICKS(2500));
-
-    digitalWrite(LED_PIN, HIGH);
-
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    // Actualizar datos del sensor
-    mpu.update();
-    // Leer datos de aceleración
-    mpu.getAccel(&accelData);
-    // Calcular el maximo valor negativo (a la derecha)
-    max_neg = atan2(accelData.accelY, -accelData.accelZ) * RAD_TO_DEG;
-
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    digitalWrite(LED_PIN, LOW);
-
-    vTaskDelay(pdMS_TO_TICKS(2500));
-
-    digitalWrite(LED_PIN, HIGH);
-
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    // Actualizar datos del sensor
-    mpu.update();
-    // Leer datos de aceleración
-    mpu.getAccel(&accelData);
-    // Calcular el punto 0
-    angle_offset = atan2(accelData.accelY, -accelData.accelZ) * RAD_TO_DEG;
-
-    vTaskDelay(pdMS_TO_TICKS(500));
-    
-    neg_correction = fabs(max_pos/max_neg);
+    //calibracionCompletaManual();
+    calibracionOffset();
 
     myPID.SetMode(AUTOMATIC);
     myPID.SetOutputLimits(-255, 255); // Limitar la salida
@@ -329,6 +298,8 @@ void setup() {
 
     Serial.println("Sistema iniciado correctamente");
     Serial.printf("ANGLE_OFFSET = %.2f\n", angle_offset);
+    Serial.printf("NEG_CORRECTION = %.2f\n", neg_correction);
+    
 
     digitalWrite(LED_PIN, LOW);
 }
