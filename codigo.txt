@@ -16,6 +16,8 @@
 #define DELAY_MOTOR 1
 #define DELAY_ANGLE 1
 
+#define MAX_PWM_VALUE 200
+
 // Definiciones de pines para control de motores
 const int PWMA = 13; // PWM para motor 1
 const int AIN1 = 14; // ain1 motor 1
@@ -42,9 +44,9 @@ const double dt = 0.001 * DELAY_MOTOR;  // Intervalo de tiempo (10 ms)
 const double alpha = 0.90; // Peso del giroscopio en el filtro complementario
 
 // Parámetros del PID
-double Kp = 30.0;   // Ganancia proporcional
-double Ki = 5.0;   // Ganancia integral
-double Kd = 0.05;  // Ganancia derivativa
+double Kp = 25.0;   // Ganancia proporcional
+double Ki = 60.0;   // Ganancia integral
+double Kd = 0.5;  // Ganancia derivativa
 
 //PID myPID();
 PID myPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
@@ -178,7 +180,7 @@ void taskControlPID(void *parameter) {
 
           myPID.Compute();
           //double correct = (angulo < 0) ? neg_correction : 1.0; // negativo : positivo
-          output_filtrada = (output / 255.0);// * correct;
+          output_filtrada = (output /(double) MAX_PWM_VALUE);// * correct;
           motors.drive(output_filtrada);
         }
 
@@ -266,7 +268,7 @@ void setup() {
     calibracionOffset();
 
     myPID.SetMode(AUTOMATIC);
-    myPID.SetOutputLimits(-255, 255); // Limitar la salida
+    myPID.SetOutputLimits(-MAX_PWM_VALUE, MAX_PWM_VALUE); // Limitar la salida
     myPID.SetSampleTime(10);
     
     motors.begin();
