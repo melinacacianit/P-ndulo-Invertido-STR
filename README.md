@@ -1,1 +1,1 @@
-# P-ndulo-Invertido-STR
+# Pendulo-Invertido-STR
