@@ -44,8 +44,8 @@ const double dt = 0.001 * DELAY_MOTOR;  // Intervalo de tiempo (10 ms)
 const double alpha = 0.90; // Peso del giroscopio en el filtro complementario
 
 // Parámetros del PID
-double Kp = 25.0;   // Ganancia proporcional
-double Ki = 60.0;   // Ganancia integral
+double Kp = 18.0;   // Ganancia proporcional
+double Ki = 100.0;   // Ganancia integral
 double Kd = 0.5;  // Ganancia derivativa
 
 //PID myPID();
